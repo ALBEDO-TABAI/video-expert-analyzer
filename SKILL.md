@@ -1,11 +1,20 @@
 ---
 name: video-expert-analyzer
-description: Advanced video analysis and selection skill with AI-powered automatic scoring. Integrates Walter Murch's rules and dynamic weighting for professional-grade curation.
+description: Advanced video analysis and selection skill with AI-powered automatic scoring. Integrates Walter Murch's rules and dynamic weighting for professional-grade curation. Supports Bilibili, YouTube, and Douyin (抖音).
 ---
 
 # Video Expert Analyzer - 视频专家分析工具
 
 基于 **Walter Murch 剪辑六法则** 和 **AI 自动评分系统** 的专业视频分析工具。
+
+## 支持平台
+
+| 平台 | 支持状态 | 说明 |
+|------|---------|------|
+| **Bilibili** | ✅ 完全支持 | 使用 yt-dlp 下载 |
+| **YouTube** | ✅ 完全支持 | 使用 yt-dlp 下载 |
+| **抖音 (Douyin)** | ✅ 完全支持 | 使用专用下载器 |
+| **其他平台** | ⚠️ 可能支持 | 取决于 yt-dlp 支持情况 |
 
 ## 核心特性
 
@@ -68,6 +77,9 @@ python3 scripts/pipeline_enhanced.py --setup
 
 # 分析视频（全自动流程）
 python3 scripts/pipeline_enhanced.py https://www.bilibili.com/video/BV1xxxxx
+
+# 分析抖音视频
+python3 scripts/pipeline_enhanced.py "https://www.douyin.com/video/xxxxx"
 
 # 运行 AI 自动分析（生成完整报告和精选片段）
 cd ~/Downloads/video-analysis/BV1xxxxx
@@ -290,10 +302,38 @@ python3 scripts/ai_analyzer.py scene_scores.json 6.5  # 阈值 6.5
 brew install ffmpeg
 
 # Python依赖
-pip3 install yt-dlp openai-whisper scenedetect[opencv]
+pip3 install yt-dlp openai-whisper scenedetect[opencv] requests
 ```
 
+## 平台特定说明
+
+### 抖音视频下载
+
+由于抖音的反爬机制，yt-dlp 无法直接下载抖音视频。本工具集成了专用的抖音下载器，可以：
+
+- ✅ 自动识别抖音链接（支持 `douyin.com` 和 `v.douyin.com` 短链接）
+- ✅ 自动提取视频信息（标题、作者）
+- ✅ 下载无水印视频
+- ✅ 自动提取音频用于转录
+
+**支持的抖音链接格式：**
+- `https://www.douyin.com/video/xxxxx`
+- `https://www.douyin.com/jingxuan?modal_id=xxxxx`
+- `https://v.douyin.com/xxxxx` (短链接)
+
+**抖音下载实现原理：**
+1. 使用移动端 User-Agent 访问页面
+2. 从页面 HTML 中提取 `RENDER_DATA` JSON 数据
+3. 解析视频直链地址（自动替换 `playwm` 为 `play` 获取无水印版本）
+4. 使用正确的 Referer 头下载视频
+
 ## 更新日志
+
+### v1.4.0 (2026-02-06)
+- ✅ 新增抖音视频下载支持
+- ✅ 自动识别抖音链接并切换下载方式
+- ✅ 支持抖音短链接和长链接
+- ✅ 自动获取无水印视频
 
 ### v1.3.0 (2026-02-05)
 - ✅ 新增中英双语术语对照

@@ -11,9 +11,19 @@ import argparse
 import subprocess
 import tempfile
 import re
+import requests
+from urllib.parse import unquote
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+
+# 导入抖音下载器
+try:
+    from douyin_downloader import DouyinDownloader
+except ImportError:
+    # 如果直接运行脚本，添加当前目录到路径
+    sys.path.insert(0, str(Path(__file__).parent))
+    from douyin_downloader import DouyinDownloader
 
 
 # 配置文件路径
@@ -51,7 +61,13 @@ def save_config(config: Dict):
 def get_video_info(url: str) -> Dict:
     """
     使用 yt-dlp 获取视频信息（标题、作者等）
+    抖音链接使用专用方法获取
     """
+    # 抖音链接使用专用方法
+    if DouyinDownloader.is_douyin_url(url):
+        return get_douyin_video_info(url)
+    
+    # 其他平台使用yt-dlp
     try:
         cmd = [
             "yt-dlp",
@@ -79,6 +95,101 @@ def get_video_info(url: str) -> Dict:
         print(f"   ⚠️  获取视频信息失败: {e}")
     
     return {"success": False, "title": "", "uploader": ""}
+
+
+def get_douyin_video_info(url: str) -> Dict:
+    """
+    获取抖音视频信息
+    """
+    try:
+        downloader = DouyinDownloader()
+        
+        # 获取重定向后的URL
+        full_url, user_agent = downloader.get_redirect_url(url)
+        if not full_url:
+            return {"success": False, "title": "", "uploader": ""}
+        
+        # 获取页面HTML
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': user_agent,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9',
+        })
+        
+        response = session.get(full_url, timeout=15)
+        html = response.text
+        
+        # 提取RENDER_DATA
+        render_data = downloader.extract_render_data(html)
+        if not render_data:
+            return {"success": False, "title": "", "uploader": ""}
+        
+        # 解析JSON获取视频信息
+        if '%' in render_data:
+            decoded = unquote(render_data)
+        else:
+            decoded = render_data
+        
+        data = json.loads(decoded)
+        
+        # 尝试提取标题和作者
+        title = ""
+        uploader = ""
+        
+        # 常见路径
+        possible_title_paths = [
+            ['loaderData', 'video_(id)/page', 'videoInfoRes', 'item_list', 0, 'desc'],
+            ['loaderData', 'video_(id)/page', 'aweme_detail', 'desc'],
+            ['app', 'videoDetail', 'desc'],
+            ['app', 'videoInfoRes', 'item_list', 0, 'desc'],
+        ]
+        
+        possible_author_paths = [
+            ['loaderData', 'video_(id)/page', 'videoInfoRes', 'item_list', 0, 'author', 'nickname'],
+            ['loaderData', 'video_(id)/page', 'aweme_detail', 'author', 'nickname'],
+            ['app', 'videoDetail', 'author', 'nickname'],
+            ['app', 'videoInfoRes', 'item_list', 0, 'author', 'nickname'],
+        ]
+        
+        def get_nested(obj, path):
+            current = obj
+            for key in path:
+                if isinstance(current, dict) and key in current:
+                    current = current[key]
+                elif isinstance(current, list) and isinstance(key, int) and key < len(current):
+                    current = current[key]
+                else:
+                    return None
+            return current
+        
+        for path in possible_title_paths:
+            title = get_nested(data, path)
+            if title:
+                break
+        
+        for path in possible_author_paths:
+            uploader = get_nested(data, path)
+            if uploader:
+                break
+        
+        # 如果找不到标题，使用URL作为标题
+        if not title:
+            title = f"抖音视频_{url.split('/')[-1][:20]}"
+        
+        return {
+            "success": True,
+            "title": title or "抖音视频",
+            "uploader": uploader or "未知作者",
+            "channel": uploader or "",
+            "duration": "",
+            "view_count": "",
+            "platform": "douyin"
+        }
+        
+    except Exception as e:
+        print(f"   ⚠️  获取抖音视频信息失败: {e}")
+        return {"success": False, "title": "", "uploader": ""}
 
 
 def sanitize_filename(name: str, max_length: int = 50) -> str:
@@ -282,6 +393,15 @@ class VideoAnalysisPipeline:
                 return url.split("v=")[1].split("&")[0]
             elif "youtu.be/" in url:
                 return url.split("youtu.be/")[1].split("?")[0]
+        if "douyin.com" in url or "iesdouyin.com" in url:
+            # 抖音视频ID提取
+            if "modal_id=" in url:
+                return url.split("modal_id=")[1].split("&")[0]
+            if "/video/" in url:
+                return url.split("/video/")[1].split("/")[0].split("?")[0]
+            # 短链接使用URL的hash作为ID
+            import hashlib
+            return f"douyin_{hashlib.md5(url.encode()).hexdigest()[:12]}"
         return f"video_{int(datetime.now().timestamp())}"
 
     def run(self) -> Dict:
@@ -328,8 +448,19 @@ class VideoAnalysisPipeline:
             print(f"   ⚠️  Video already exists: {self.video_path}")
             self.results["steps_completed"].append("download_video")
             return
-        cmd = ["yt-dlp", "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best", "-o", str(self.video_path), self.url]
-        subprocess.run(cmd, check=True)
+        
+        # 检查是否为抖音链接，使用专用下载器
+        if DouyinDownloader.is_douyin_url(self.url):
+            print("   🔍 检测到抖音视频链接")
+            downloader = DouyinDownloader()
+            success = downloader.download(self.url, self.video_path)
+            if not success:
+                raise RuntimeError("抖音视频下载失败")
+        else:
+            # 使用yt-dlp下载其他平台视频
+            cmd = ["yt-dlp", "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best", "-o", str(self.video_path), self.url]
+            subprocess.run(cmd, check=True)
+        
         if not self.video_path.exists():
             raise RuntimeError("Video download failed - file not found")
         file_size = self.video_path.stat().st_size / (1024 * 1024)
@@ -345,7 +476,31 @@ class VideoAnalysisPipeline:
             self.results["steps_completed"].append("download_audio")
             return
         
-        # 首先尝试从 URL 下载音频
+        # 抖音链接直接从视频提取音频（yt-dlp无法下载抖音音频）
+        if DouyinDownloader.is_douyin_url(self.url):
+            print("   📱 抖音视频，直接从视频提取音频...")
+            if self.video_path.exists():
+                try:
+                    cmd = ["ffmpeg", "-i", str(self.video_path), "-vn", "-c:a", "copy", str(self.audio_path), "-y"]
+                    subprocess.run(cmd, check=True, capture_output=True)
+                    if self.audio_path.exists():
+                        file_size = self.audio_path.stat().st_size / 1024
+                        print(f"   ✅ Audio extracted from video: {file_size:.2f} KB")
+                        self.results["audio_path"] = str(self.audio_path)
+                        self.results["steps_completed"].append("download_audio")
+                        return
+                except subprocess.CalledProcessError as e:
+                    print(f"   ⚠️  Audio extraction failed: {e}")
+            
+            # 如果提取失败但视频存在，继续使用视频进行转录
+            if self.video_path.exists():
+                print("   ⚠️  Will use video directly for transcription")
+                self.results["steps_completed"].append("download_audio")
+                return
+            
+            raise RuntimeError("Audio extraction failed - file not found")
+        
+        # 其他平台：首先尝试从 URL 下载音频
         try:
             cmd = ["yt-dlp", "-f", "bestaudio[ext=m4a]/bestaudio", "--extract-audio", "--audio-format", "m4a", "-o", str(self.audio_path), self.url]
             subprocess.run(cmd, check=True, capture_output=True)
