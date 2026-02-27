@@ -14,11 +14,10 @@ Clear guidance on which AI models work with each scoring mode:
 
 | Model | Agent Mode | API Mode |
 |-------|-----------|---------|
-| Gemini 2.0 Flash | ✅ Recommended | ✅ Recommended |
-| Gemini 2.5 Pro | ✅ Recommended | ✅ Supported |
-| Kimi Vision | ✅ Supported | ✅ Supported |
+| Gemini 3.0 Flash | ✅ Recommended | ✅ Recommended |
+| Gemini 3.0 Pro | ✅ Recommended | ✅ Supported |
+| Kimi 2.5 | ✅ Supported | ✅ Supported |
 | Claude (Sonnet/Opus) | ✅ Supported | ❌ |
-| GPT-4o | ❌ | ✅ Supported |
 
 ### 📱 Xiaohongshu Support (小红书支持)
 Added `xiaohongshu_downloader.py` for downloading videos from Xiaohongshu (Little Red Book).

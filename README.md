@@ -2,7 +2,7 @@
   <img src="https://img.shields.io/badge/version-2.1.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/python-3.9+-yellow" alt="Python">
-  <img src="https://img.shields.io/badge/AI-Gemini%20%7C%20Kimi%20%7C%20GPT--4o-purple" alt="AI Models">
+  <img src="https://img.shields.io/badge/AI-Gemini%203.0%20%7C%20Kimi%202.5%20%7C%20Claude-purple" alt="AI Models">
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@
 <a name="english"></a>
 # 🎬 Video Expert Analyzer
 
-> AI-powered professional video analysis tool based on **Walter Murch's Six Rules of Editing**, with real multimodal AI vision scoring.
+> AI-powered professional video analysis tool based on **Walter Murch's Six Rules of Editing**, with real multimodal AI vision scoring (Gemini 3.0 / Kimi 2.5 / Claude).
 
 ## ✨ Features
 
@@ -42,11 +42,10 @@
 
 | Model | Agent Mode | API Mode | Notes |
 |-------|-----------|---------|-------|
-| **Gemini 2.0 Flash** | ✅ Recommended | ✅ Recommended | Fast, strong vision |
-| **Gemini 2.5 Pro** | ✅ Recommended | ✅ Supported | Best visual understanding |
-| **Kimi Vision** | ✅ Supported | ✅ Supported | Excellent for Chinese |
+| **Gemini 3.0 Flash** | ✅ Recommended | ✅ Recommended | Fast, strong vision |
+| **Gemini 3.0 Pro** | ✅ Recommended | ✅ Supported | Best visual understanding |
+| **Kimi 2.5** | ✅ Supported | ✅ Supported | Excellent for Chinese |
 | **Claude (Sonnet/Opus)** | ✅ Supported | ❌ No | Has vision but no OpenAI-compatible API |
-| **GPT-4o** | ❌ No | ✅ Supported | API mode only |
 | **Text-only models** | ❌ No | ❌ No | Cannot score without vision |
 
 > **Agent Mode** = AI assistant in IDE views frame images directly  
@@ -218,11 +217,10 @@ Built with:
 
 | 模型 | Agent 模式 | API 模式 | 说明 |
 |------|-----------|---------|------|
-| **Gemini 2.0 Flash** | ✅ 推荐 | ✅ 推荐 | 速度快、视觉能力强 |
-| **Gemini 2.5 Pro** | ✅ 推荐 | ✅ 支持 | 最强视觉理解 |
-| **Kimi Vision** | ✅ 支持 | ✅ 支持 | 中文语境优秀 |
+| **Gemini 3.0 Flash** | ✅ 推荐 | ✅ 推荐 | 速度快、视觉能力强 |
+| **Gemini 3.0 Pro** | ✅ 推荐 | ✅ 支持 | 最强视觉理解 |
+| **Kimi 2.5** | ✅ 支持 | ✅ 支持 | 中文语境优秀 |
 | **Claude (Sonnet/Opus)** | ✅ 支持 | ❌ 不支持 | 有视觉能力但无 OpenAI 兼容 API |
-| **GPT-4o** | ❌ 不支持 | ✅ 支持 | 仅限 API 模式 |
 | **纯文本模型** | ❌ 不可用 | ❌ 不可用 | 无视觉能力 |
 
 ## 🚀 快速开始

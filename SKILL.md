@@ -19,7 +19,7 @@ description: Advanced video analysis and selection skill with AI-powered automat
 
 ## 核心特性
 
-✅ **真实 AI 视觉评分** - 调用多模态大模型（Gemini/Kimi）真实分析画面内容  
+✅ **真实 AI 视觉评分** - 调用多模态大模型（Gemini 3.0/Kimi 2.5）真实分析画面内容  
 ✅ **双路径评分** - 支持「Agent 模式」（宿主 AI 直接看图）和「API 模式」（远程 API 调用）  
 ✅ **中英双语术语** - 所有专业术语附中文释义  
 ✅ **可配置输出目录** - 首次使用设置，后续自动使用  
@@ -29,18 +29,16 @@ description: Advanced video analysis and selection skill with AI-powered automat
 ✅ **智能文件夹命名** - 以视频标题（自动裁剪）命名输出文件夹，更直观易懂
 
 > **⚠️ 重要提示：本 skill 的 AI 评分功能需要多模态（视觉理解）模型才能正常工作。**  
-> 请确保使用 Gemini、Kimi 等具备视觉能力的模型来调用此 skill。  
+> 请确保使用 Gemini 3.0、Kimi 2.5 等具备视觉能力的模型来调用此 skill。  
 
 ## 模型兼容性
 
 | 模型 | Agent 模式 | API 模式 | 说明 |
 |------|-----------|---------|------|
-| **Gemini 2.0 Flash** | ✅ 推荐 | ✅ 推荐 | 速度快、视觉能力强 |
-| **Gemini 2.5 Pro** | ✅ 推荐 | ✅ 支持 | 最强视觉理解 |
-| **Kimi Vision** | ✅ 支持 | ✅ 支持 | 中文语境优秀 |
+| **Gemini 3.0 Flash** | ✅ 推荐 | ✅ 推荐 | 速度快、视觉能力强 |
+| **Gemini 3.0 Pro** | ✅ 推荐 | ✅ 支持 | 最强视觉理解 |
+| **Kimi 2.5** | ✅ 支持 | ✅ 支持 | 中文语境优秀 |
 | **Claude (Sonnet/Opus)** | ✅ 支持 | ❌ 不支持 | 有视觉能力但无 OpenAI 兼容 API |
-| **GPT-4o** | ❌ 不支持 | ✅ 支持 | 仅限 API 模式 |
-| **Qwen-VL** | ❌ 不支持 | ✅ 支持 | 需自建 API 端点 |
 | **纯文本模型** | ❌ 不可用 | ❌ 不可用 | 无视觉能力，无法评分 |
 
 > **Agent 模式** = 在 IDE（Cursor/VS Code/OpenClaw）中，AI 助手直接查看帧图片评分  
