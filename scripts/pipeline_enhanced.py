@@ -43,7 +43,6 @@ def load_config() -> Dict:
     default_config = {
         "output_base_dir": str(Path.home() / "Downloads" / "video-analysis"),
         "first_run": True,
-        "default_whisper_model": "base",
         "default_scene_threshold": 27.0
     }
     
@@ -318,14 +317,12 @@ class VideoAnalysisPipeline:
     """增强版视频分析管道"""
 
     def __init__(self, url: str, output_dir: str,
-                 whisper_model: str = "medium",
                  scene_threshold: float = 27.0,
                  extract_scenes: bool = True,
                  auto_select_best: bool = True,
                  best_threshold: float = 7.5):
         self.url = url
         self.output_dir = Path(output_dir).resolve()
-        self.whisper_model = whisper_model
         self.scene_threshold = scene_threshold
         self.extract_scenes = extract_scenes
         self.auto_select_best = auto_select_best
@@ -538,7 +535,7 @@ class VideoAnalysisPipeline:
     def _step_scene_detection(self) -> Dict:
         print("\n🎞️  Step 3: Detecting scenes...")
         self.scenes_dir.mkdir(exist_ok=True)
-        cmd = ["scenedetect", "-i", str(self.video_path), "-o", str(self.scenes_dir), "detect-adaptive", "-t", str(self.scene_threshold)]
+        cmd = ["scenedetect", "-i", str(self.video_path), "-o", str(self.scenes_dir), "detect-content", "-t", str(self.scene_threshold)]
         if self.extract_scenes:
             cmd.append("split-video")
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -564,45 +561,136 @@ class VideoAnalysisPipeline:
         return scene_info
 
     def _step_transcription(self) -> Dict:
-        print("\n🎤 Step 4: Transcribing audio...")
+        print("\n🎤 Step 4: 智能字幕提取 (B站API → 内嵌 → RapidOCR → FunASR)...")
         if self.srt_path.exists():
             print(f"   ⚠️  Transcription already exists: {self.srt_path}")
             self.results["steps_completed"].append("transcription")
             return {"status": "skipped"}
         
-        # 确定音频源：优先使用音频文件，否则使用视频文件
-        audio_source = str(self.audio_path) if self.audio_path.exists() else str(self.video_path)
-        if audio_source == str(self.video_path):
-            print(f"   ⚠️  Using video file for transcription: {self.video_path.name}")
-        
-        import whisper
-        import torch
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        if device == "cuda":
-            print(f"   🚀 Using CUDA acceleration")
-        else:
-            print(f"   ⚠️  Using CPU (slower)")
-        print(f"   📥 Loading Whisper {self.whisper_model} model...")
-        model = whisper.load_model(self.whisper_model, device=device)
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            wav_path = tmp.name
+        # 使用智能字幕提取（四级降级）
         try:
-            cmd = ["ffmpeg", "-y", "-i", audio_source, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", wav_path]
-            subprocess.run(cmd, check=True, capture_output=True)
-            print(f"   🎤 Transcribing...")
-            result = model.transcribe(wav_path, task="transcribe")
-            self._write_srt(result["segments"], self.srt_path)
-            self._write_transcript(result["segments"], self.transcript_path)
-            print(f"   ✅ Transcription complete")
-            print(f"      Language: {result.get('language', 'unknown')}")
-            print(f"      Segments: {len(result['segments'])}")
-            transcript_info = {"language": result.get("language", "unknown"), "segment_count": len(result["segments"]), "srt_path": str(self.srt_path), "transcript_path": str(self.transcript_path), "full_text": " ".join([seg["text"].strip() for seg in result["segments"]])}
+            from extract_subtitle_funasr import smart_subtitle_extraction
+        except ImportError:
+            # 如果导入失败，尝试从同目录加载
+            script_dir = Path(__file__).parent
+            sys.path.insert(0, str(script_dir))
+            from extract_subtitle_funasr import smart_subtitle_extraction
+        
+        # 确定视频源
+        video_source = str(self.video_path) if self.video_path.exists() else None
+        if not video_source:
+            print("   ❌ 视频文件不存在，无法转录")
+            return {"status": "failed"}
+        
+        success, mode = smart_subtitle_extraction(
+            video_path=video_source,
+            output_srt=str(self.srt_path),
+            video_url=self.url
+        )
+        
+        if success:
+            # 读取 SRT 生成 transcript 文本
+            full_text = ""
+            segment_count = 0
+            try:
+                with open(self.srt_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                texts = []
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.isdigit() and '-->' not in line:
+                        texts.append(line)
+                        segment_count += 1
+                full_text = " ".join(texts)
+            except Exception:
+                pass
+            
+            # 写 transcript 文件
+            if full_text:
+                self._write_transcript_from_text(full_text, self.transcript_path)
+            
+            print(f"   ✅ 字幕提取完成 (模式: {mode})")
+            transcript_info = {
+                "language": "zh",
+                "mode": mode,
+                "segment_count": segment_count,
+                "srt_path": str(self.srt_path),
+                "transcript_path": str(self.transcript_path),
+                "full_text": full_text
+            }
             self.results["transcription"] = transcript_info
             self.results["steps_completed"].append("transcription")
             return transcript_info
-        finally:
-            if os.path.exists(wav_path):
-                os.unlink(wav_path)
+        else:
+            print("   ❌ 字幕提取失败")
+            self.results["steps_completed"].append("transcription")
+            return {"status": "failed"}
+    
+    def _write_transcript_from_text(self, text: str, output_path: Path):
+        """将纯文本写入 transcript 文件"""
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(f"=== Video Transcript ===\n\n")
+            f.write(f"=== Full Text ===\n\n{text}\n")
+
+    @staticmethod
+    def _funasr_to_segments(funasr_result) -> List[Dict]:
+        """
+        将 FunASR 返回结果转换为 Whisper 兼容的 segments 格式
+        每个 segment: {"start": float_seconds, "end": float_seconds, "text": str}
+        """
+        segments = []
+        for res in funasr_result:
+            text = res.get('text', '').strip()
+            sentence_info = res.get('sentence_info', [])
+            timestamps = res.get('timestamp', [])
+            
+            if sentence_info:
+                # 方案A: 使用句级时间戳（最佳）
+                for sent in sentence_info:
+                    sent_text = sent.get('text', '').strip()
+                    if sent_text:
+                        segments.append({
+                            "start": sent.get('start', 0) / 1000.0,
+                            "end": sent.get('end', 0) / 1000.0,
+                            "text": sent_text
+                        })
+            elif timestamps and text:
+                # 方案B: 按标点切分 + 字级时间戳映射
+                sentence_endings = set('。！？!?；;…')
+                clause_breaks = set('，,、')
+                current_chars = []
+                current_start_idx = 0
+                ts_len = len(timestamps)
+                text_len = len(text)
+                
+                for char_idx, char in enumerate(text):
+                    current_chars.append(char)
+                    ts_idx = min(int(char_idx / text_len * ts_len), ts_len - 1) if ts_len > 0 else 0
+                    is_end = char in sentence_endings
+                    is_clause = char in clause_breaks and len(current_chars) > 25
+                    is_last = char_idx == text_len - 1
+                    
+                    if is_end or is_clause or is_last:
+                        sent_text = ''.join(current_chars).strip()
+                        if sent_text:
+                            start_ts_idx = min(int(current_start_idx / text_len * ts_len), ts_len - 1) if ts_len > 0 else 0
+                            start_ms = timestamps[start_ts_idx][0] if ts_len > 0 else 0
+                            end_ms = timestamps[ts_idx][1] if ts_len > 0 else 0
+                            segments.append({
+                                "start": start_ms / 1000.0,
+                                "end": end_ms / 1000.0,
+                                "text": sent_text
+                            })
+                        current_chars = []
+                        current_start_idx = char_idx + 1
+            elif text:
+                # 方案C: 无时间戳，仅文本
+                segments.append({
+                    "start": 0.0,
+                    "end": 0.0,
+                    "text": text
+                })
+        return segments
 
     def _write_srt(self, segments: List[Dict], output_path: Path):
         with open(output_path, "w", encoding="utf-8") as f:
@@ -646,7 +734,7 @@ class VideoAnalysisPipeline:
             frame_path = self.frames_dir / f"{safe_scene_name}.jpg"
             if frame_path.exists():
                 continue
-            cmd = ["ffmpeg", "-i", str(scene_file), "-vf", "select=eq(n\\\\,0)", "-vframes", "1", str(frame_path), "-y"]
+            cmd = ["ffmpeg", "-i", str(scene_file), "-vf", "select=eq(n\\,0)", "-vframes", "1", str(frame_path), "-y"]
             subprocess.run(cmd, check=True, capture_output=True)
         frame_count = len(list(self.frames_dir.glob("*.jpg")))
         print(f"   ✅ Extracted {frame_count} frames")
@@ -828,14 +916,13 @@ Examples:
   # 使用自定义输出目录
   python3 pipeline_enhanced.py URL -o /path/to/output
 
-  # 使用更小的Whisper模型
-  python3 pipeline_enhanced.py URL --whisper-model tiny
+   # 使用自定义场景检测阈值
+   python3 pipeline_enhanced.py URL --scene-threshold 20
         """
     )
     parser.add_argument("url", nargs="?", help="Video URL (Bilibili or YouTube)")
     parser.add_argument("-o", "--output", help="Output directory (default: from config)")
     parser.add_argument("--setup", action="store_true", help="Setup output directory configuration")
-    parser.add_argument("--whisper-model", default="base", choices=["tiny", "base", "small", "medium", "large"], help="Whisper model size (default: base)")
     parser.add_argument("--scene-threshold", type=float, default=27.0, help="Scene detection threshold (default: 27.0)")
     parser.add_argument("--no-extract-scenes", action="store_true", help="Skip extracting individual scene clips")
     parser.add_argument("--best-threshold", type=float, default=7.5, help="Threshold for best shots selection (default: 7.5)")
@@ -857,7 +944,6 @@ Examples:
         pipeline = VideoAnalysisPipeline(
             url=args.url,
             output_dir=output_dir,
-            whisper_model=args.whisper_model,
             scene_threshold=args.scene_threshold,
             extract_scenes=not args.no_extract_scenes,
             best_threshold=args.best_threshold

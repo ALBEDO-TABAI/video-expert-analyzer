@@ -11,20 +11,40 @@ description: Advanced video analysis and selection skill with AI-powered automat
 
 | 平台 | 支持状态 | 说明 |
 |------|---------|------|
-| **Bilibili** | ✅ 完全支持 | 使用 yt-dlp 下载 |
-| **YouTube** | ✅ 完全支持 | 使用 yt-dlp 下载 |
-| **抖音 (Douyin)** | ✅ 完全支持 | 使用专用下载器 |
+| **Bilibili** | ✅ 完全支持 | yt-dlp 下载 + B站API字幕 |
+| **YouTube** | ✅ 完全支持 | yt-dlp 下载 |
+| **抖音 (Douyin)** | ✅ 完全支持 | 专用下载器（无水印） |
+| **小红书 (Xiaohongshu)** | ✅ 完全支持 | 专用下载器 |
 | **其他平台** | ⚠️ 可能支持 | 取决于 yt-dlp 支持情况 |
 
 ## 核心特性
 
-✅ **AI 自动分析** - 自动为场景评分并生成完整分析报告  
+✅ **真实 AI 视觉评分** - 调用多模态大模型（Gemini/Kimi）真实分析画面内容  
+✅ **双路径评分** - 支持「Agent 模式」（宿主 AI 直接看图）和「API 模式」（远程 API 调用）  
 ✅ **中英双语术语** - 所有专业术语附中文释义  
 ✅ **可配置输出目录** - 首次使用设置，后续自动使用  
 ✅ **精选片段自动复制** - 自动复制到 `scenes/best_shots/`  
 ✅ **完整分析报告** - 包含理论依据、评分理由、整体评价（非模板）  
 ✅ **动态权重系统** - 根据场景类型自动调整评分权重  
-✅ **智能文件夹命名** - 以视频标题（自动裁剪）命名输出文件夹，更直观易懂  
+✅ **智能文件夹命名** - 以视频标题（自动裁剪）命名输出文件夹，更直观易懂
+
+> **⚠️ 重要提示：本 skill 的 AI 评分功能需要多模态（视觉理解）模型才能正常工作。**  
+> 请确保使用 Gemini、Kimi 等具备视觉能力的模型来调用此 skill。  
+
+## 模型兼容性
+
+| 模型 | Agent 模式 | API 模式 | 说明 |
+|------|-----------|---------|------|
+| **Gemini 2.0 Flash** | ✅ 推荐 | ✅ 推荐 | 速度快、视觉能力强 |
+| **Gemini 2.5 Pro** | ✅ 推荐 | ✅ 支持 | 最强视觉理解 |
+| **Kimi Vision** | ✅ 支持 | ✅ 支持 | 中文语境优秀 |
+| **Claude (Sonnet/Opus)** | ✅ 支持 | ❌ 不支持 | 有视觉能力但无 OpenAI 兼容 API |
+| **GPT-4o** | ❌ 不支持 | ✅ 支持 | 仅限 API 模式 |
+| **Qwen-VL** | ❌ 不支持 | ✅ 支持 | 需自建 API 端点 |
+| **纯文本模型** | ❌ 不可用 | ❌ 不可用 | 无视觉能力，无法评分 |
+
+> **Agent 模式** = 在 IDE（Cursor/VS Code/OpenClaw）中，AI 助手直接查看帧图片评分  
+> **API 模式** = 在终端 CLI 中，通过 OpenAI 兼容 API 远程调用视觉模型
 
 ## 术语对照表 (Terminology)
 
@@ -68,82 +88,86 @@ description: Advanced video analysis and selection skill with AI-powered automat
 
 ## 快速开始
 
-### 方式一：全自动分析（推荐）
+### 第 1 步：数据处理 Pipeline
 
 ```bash
 # 首次配置（只需一次）
-cd ~/.openclaw/workspace/skills/video-expert-analyzer
 python3 scripts/pipeline_enhanced.py --setup
 
-# 分析视频（全自动流程）
+# 分析视频
 python3 scripts/pipeline_enhanced.py https://www.bilibili.com/video/BV1xxxxx
-
-# 分析抖音视频
 python3 scripts/pipeline_enhanced.py "https://www.douyin.com/video/xxxxx"
-
-# 运行 AI 自动分析（生成完整报告和精选片段）
-cd ~/Downloads/video-analysis/BV1xxxxx
-python3 ~/.openclaw/workspace/skills/video-expert-analyzer/scripts/ai_analyzer.py scene_scores.json
 ```
 
-### 方式二：一键完整分析
+### 第 2 步：AI 评分（二选一）
+
+首次使用时，请选择评分模式：
+
+#### 🅰️ Agent 模式（推荐，IDE/OpenClaw/Cursor 用户）
+
+如果你正在 IDE 或 AI 编程助手中使用此 skill，**无需配置任何 API Key**。
+宿主 AI 助手（如 Gemini、Kimi）本身就具备视觉理解能力，可以直接「看图打分」。
+
+**流程：** 当你（AI 助手）拥有视觉理解能力时，在 pipeline 完成后执行以下步骤：
+
+1. **逐批查看帧画面**：使用 `view_file` 工具查看 `<output_dir>/frames/` 目录下的每张 `.jpg`（建议每批 3-5 张并行查看以提高效率）
+2. **按以下维度为每个场景打分（1-10 整数）**：
+   - **aesthetic_beauty**（美感）：构图、光影、色彩
+   - **credibility**（可信度）：真实感、物理逻辑
+   - **impact**（冲击力）：视觉显著性、第一眼吸引力
+   - **memorability**（记忆度）：独特符号、冯·雷斯托夫效应
+   - **fun_interest**（趣味度）：参与感、娱乐价值
+3. **分类场景类型**：TYPE-A Hook / TYPE-B Narrative / TYPE-C Aesthetic / TYPE-D Commercial
+4. **计算加权分并筛选**：加权 ≥ 8.5 → MUST KEEP，≥ 7.0 → USABLE，< 7.0 → DISCARD
+5. **将评分结果更新到 `scene_scores.json` 中每个场景的字段**
+6. **将精选片段（MUST KEEP + USABLE）对应的 mp4 复制到 `scenes/best_shots/` 并按排名命名**
+7. **生成分析报告** `<video_id>_complete_analysis.md`
+
+#### 🅱️ API 模式（独立 CLI 运行用户）
+
+如果你直接在终端运行脚本，需要配置视觉大模型 API：
 
 ```bash
-# 创建一键分析脚本
-cat > analyze_video.sh << 'EOF'
-#!/bin/bash
-URL=$1
-SKILL_DIR="$HOME/.openclaw/workspace/skills/video-expert-analyzer"
+# 设置 API 密钥（必需）
+export VIDEO_ANALYZER_API_KEY="your-api-key"
 
-# 运行 pipeline
-python3 "$SKILL_DIR/scripts/pipeline_enhanced.py" "$URL" --whisper-model base
-
-# 获取视频 ID
-VIDEO_ID=$(echo "$URL" | grep -oE 'BV[0-9a-zA-Z]+' || echo "video_$(date +%s)")
-OUTPUT_DIR="$HOME/Downloads/video-analysis/$VIDEO_ID"
+# 可选：自定义端点和模型
+export VIDEO_ANALYZER_BASE_URL="https://generativelanguage.googleapis.com/v1beta/openai"
+export VIDEO_ANALYZER_MODEL="gemini-2.0-flash"
 
 # 运行 AI 分析
-if [ -f "$OUTPUT_DIR/scene_scores.json" ]; then
-    echo ""
-    echo "Running AI analysis..."
-    python3 "$SKILL_DIR/scripts/ai_analyzer.py" "$OUTPUT_DIR/scene_scores.json"
-fi
-EOF
-
-chmod +x analyze_video.sh
-
-# 使用
-./analyze_video.sh https://www.bilibili.com/video/BV1xxxxx
+cd ~/Downloads/video-analysis/<视频文件夹>
+python3 <skill_dir>/scripts/ai_analyzer.py scene_scores.json --mode api
 ```
 
 ## 工作流程
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                   VIDEO EXPERT ANALYZER                      │
+│                   VIDEO EXPERT ANALYZER v2.0                 │
 └─────────────────────────────────────────────────────────────┘
 
-第 1 阶段: 数据处理
+第 1 阶段: 数据处理 (pipeline_enhanced.py)
 1. 📥 下载视频              → video.mp4
 2. 🎵 提取音频              → video.m4a
-3. 🎞️  场景检测              → scenes/*.mp4
-4. 🎤 语音转录              → video.srt
+3. 🎞️  场景检测 (detect-content) → scenes/*.mp4
+4. 🎤 智能字幕提取           → video.srt
+   (B站API → 内嵌字幕 → RapidOCR → FunASR 四级降级)
 5. 🖼️  帧提取               → frames/*.jpg
 6. 📊 生成评分模板          → scene_scores.json
 
-第 2 阶段: AI 自动分析
-7. 🤖 AI 自动评分           → 填写完整评分数据
-8. 🧮 动态权重计算          → 根据类型计算加权得分
-9. ⭐ 精选镜头筛选          → 复制到 scenes/best_shots/
-10. 📄 生成完整报告         → *_complete_analysis.md
-                        (中英双语术语对照)
-
-                        ↓
-
-              ✅ 完整分析报告（无 TODO）
-              ✅ 精选片段已复制
-              ✅ 中英双语术语对照
-              ✅ 可立即使用
+第 2 阶段: AI 视觉评分 (选择一种模式)
+┌────────────────────────┬────────────────────────┐
+│   🅰️ Agent 模式         │   🅱️ API 模式           │
+│   宿主 AI 直接看图评分  │   远程调用视觉大模型    │
+│   无需 API Key         │   需要 API Key          │
+│   IDE/OpenClaw/Cursor  │   独立 CLI 运行          │
+└────────────────────────┴────────────────────────┘
+                         ↓
+7. 🤖 真实视觉分析评分     → 基于画面内容的真实评分
+8. 🧮 动态权重计算         → 根据类型计算加权得分
+9. ⭐ 精选镜头筛选         → 复制到 scenes/best_shots/
+10. 📄 生成完整报告        → *_complete_analysis.md
 ```
 
 ## 分析方法论
@@ -264,10 +288,10 @@ cd ~/Downloads/video-analysis/BV1xxxxx
 python3 ~/.openclaw/workspace/skills/video-expert-analyzer/scripts/ai_analyzer.py scene_scores.json
 ```
 
-### 快速分析（小模型）
+### 快速分析（自定义场景检测阈值）
 
 ```bash
-python3 scripts/pipeline_enhanced.py URL --whisper-model tiny
+python3 scripts/pipeline_enhanced.py URL --scene-threshold 20
 ```
 
 ### 调整精选阈值
@@ -284,7 +308,6 @@ python3 scripts/ai_analyzer.py scene_scores.json 6.5  # 阈值 6.5
 |------|------|
 | `--setup` | 配置输出目录 |
 | `-o, --output` | 指定输出目录 |
-| `--whisper-model` | Whisper模型 (tiny/base/small/medium/large) |
 | `--scene-threshold` | 场景检测阈值 (默认27) |
 | `--best-threshold` | 精选阈值 (默认7.5) |
 
@@ -293,7 +316,14 @@ python3 scripts/ai_analyzer.py scene_scores.json 6.5  # 阈值 6.5
 | 参数 | 说明 |
 |------|------|
 | `scene_scores.json` | 评分文件路径 |
-| `threshold` | 精选阈值 (默认7.0) |
+| `--mode api` | API 模式（需设置 `VIDEO_ANALYZER_API_KEY`）|
+| `--mode agent` | Agent 模式（生成模板供宿主 AI 填写）|
+
+| 环境变量 | 说明 |
+|------|------|
+| `VIDEO_ANALYZER_API_KEY` | 视觉大模型 API 密钥（API 模式必需）|
+| `VIDEO_ANALYZER_BASE_URL` | API 端点（默认 Gemini） |
+| `VIDEO_ANALYZER_MODEL` | 模型名称（默认 `gemini-2.0-flash`）|
 
 ## 依赖要求
 
@@ -301,8 +331,22 @@ python3 scripts/ai_analyzer.py scene_scores.json 6.5  # 阈值 6.5
 # 系统依赖
 brew install ffmpeg
 
-# Python依赖
-pip3 install yt-dlp openai-whisper scenedetect[opencv] requests
+# 一键安装所有 Python 依赖
+pip3 install -r requirements.txt
+
+# 或手动安装核心依赖
+pip3 install yt-dlp scenedetect[opencv] requests funasr modelscope torch torchaudio
+
+# 可选依赖
+pip3 install openai              # API 模式评分
+pip3 install rapidocr-onnxruntime # 烧录字幕 OCR 检测
+```
+
+### 环境检测
+
+```bash
+# 一键检测所有依赖是否就绪
+python3 scripts/check_environment.py
 ```
 
 ## 平台特定说明
@@ -327,7 +371,44 @@ pip3 install yt-dlp openai-whisper scenedetect[opencv] requests
 3. 解析视频直链地址（自动替换 `playwm` 为 `play` 获取无水印版本）
 4. 使用正确的 Referer 头下载视频
 
+## Troubleshooting
+
+### 终端命令卡顿
+如果在 IDE 中执行 `cp` 或 Python 脚本时终端无响应，这通常是 IDE 终端代理的问题。解决方案：
+- **方案 A**: 打开 macOS 自带 Terminal.app 手动运行命令
+- **方案 B**: 使用 `copy_by_index.py` 脚本通过 JSON 索引批量复制文件
+
+### FunASR 首次下载慢
+FunASR 首次运行需下载约 2-3GB 的 Paraformer 模型。如果下载缓慢：
+- 设置镜像: `export MODELSCOPE_CACHE=~/.cache/modelscope`
+- 或使用 B站 API 字幕（无需本地模型，速度极快）
+
+### Agent 模式评分注意事项
+- 必须使用**具备视觉能力**的多模态模型（参见「模型兼容性」表）
+- 纯文本模型（如 GPT-3.5、Claude Haiku）**无法**执行 Agent 模式评分
+- 建议每批查看 3-5 张帧图片，避免单次加载过多
+
+---
+
 ## 更新日志
+
+### v2.1.0 (2026-02-27)
+- ✅ **智能字幕提取**：对齐 video-copy-analyzer，支持 B站API→内嵌→RapidOCR→FunASR 四级降级
+- ✅ **新增小红书支持**：集成 `xiaohongshu_downloader.py`
+- ✅ **新增 `requirements.txt`**：一键安装所有依赖
+- ✅ **新增模型兼容性矩阵**：明确不同模型的适用模式
+- ✅ **重写 `check_environment.py`**：检测 v2.1 实际依赖
+- ✅ **清理废弃文件**：移除旧版 pipeline、Whisper 转录等6个废弃脚本
+- ✅ **新增 Troubleshooting 章节**
+
+### v2.0.0 (2026-02-27)
+- ✅ **重写 AI 评分系统**：移除假数据模拟，接入真实视觉大模型
+- ✅ **双路径评分**：Agent 模式（宿主 AI 直接看图）+ API 模式（远程调用）
+- ✅ **修复场景检测**：`detect-adaptive` → `detect-content`，镜头切分更精准
+- ✅ 将语音转录引擎从 Whisper 替换为 FunASR (Paraformer-zh)
+- ✅ 中文场景转录速度大幅提升（10分钟音频约22秒完成）
+- ✅ 移除 `--whisper-model` 参数（FunASR 使用固定 paraformer-zh 模型）
+- ✅ 内置 VAD 自动分段 + 标点恢复
 
 ### v1.4.0 (2026-02-06)
 - ✅ 新增抖音视频下载支持

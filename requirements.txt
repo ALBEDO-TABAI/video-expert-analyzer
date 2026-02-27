@@ -1,0 +1,9 @@
+yt-dlp
+scenedetect[opencv]
+requests
+funasr
+modelscope
+torch
+torchaudio
+openai
+rapidocr-onnxruntime
