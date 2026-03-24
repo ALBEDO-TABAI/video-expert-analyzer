@@ -17,13 +17,12 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
-# 导入抖音下载器
 try:
-    from douyin_downloader import DouyinDownloader
+    import download_douyin as DouyinDownloader
 except ImportError:
     # 如果直接运行脚本，添加当前目录到路径
     sys.path.insert(0, str(Path(__file__).parent))
-    from douyin_downloader import DouyinDownloader
+    import download_douyin as DouyinDownloader
 
 
 # 配置文件路径
@@ -535,7 +534,7 @@ class VideoAnalysisPipeline:
     def _step_scene_detection(self) -> Dict:
         print("\n🎞️  Step 3: Detecting scenes...")
         self.scenes_dir.mkdir(exist_ok=True)
-        cmd = ["scenedetect", "-i", str(self.video_path), "-o", str(self.scenes_dir), "detect-content", "-t", str(self.scene_threshold)]
+        cmd = [sys.executable, "-m", "scenedetect", "-i", str(self.video_path), "-o", str(self.scenes_dir), "detect-content", "-t", str(self.scene_threshold)]
         if self.extract_scenes:
             cmd.append("split-video")
         result = subprocess.run(cmd, capture_output=True, text=True)

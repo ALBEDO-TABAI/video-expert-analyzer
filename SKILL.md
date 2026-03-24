@@ -1,6 +1,6 @@
 ---
 name: video-expert-analyzer
-description: Advanced video analysis and selection skill with AI-powered automatic scoring. Integrates Walter Murch's rules and dynamic weighting for professional-grade curation. Supports Bilibili, YouTube, and Douyin (抖音).
+description: Advanced video analysis and selection skill with AI-powered automatic scoring. Integrates Walter Murch's rules and dynamic weighting for professional-grade curation. Supports Bilibili, YouTube, Douyin (抖音), and Xiaohongshu (小红书). Use this skill whenever the user wants to analyze videos, score or rate scenes, extract best shots/highlights, evaluate video quality, curate clips, do competitor video analysis, or mentions terms like "视频分析", "镜头筛选", "场景评分", "视频拆解", "精选片段", "视频质量", "镜头打分", "素材挑选" — even if they don't explicitly ask for "expert analysis".
 ---
 
 # Video Expert Analyzer - 视频专家分析工具
@@ -108,18 +108,58 @@ python3 scripts/pipeline_enhanced.py "https://www.douyin.com/video/xxxxx"
 
 **流程：** 当你（AI 助手）拥有视觉理解能力时，在 pipeline 完成后执行以下步骤：
 
-1. **逐批查看帧画面**：使用 `view_file` 工具查看 `<output_dir>/frames/` 目录下的每张 `.jpg`（建议每批 3-5 张并行查看以提高效率）
-2. **按以下维度为每个场景打分（1-10 整数）**：
+1. **统计场景总数**：先列出 `<output_dir>/frames/` 目录，确定总共有多少个场景帧。这决定了后续分批策略。
+2. **分批查看帧画面**：每批 5-10 张帧图片为一个 batch（每批超过 10 张会降低单图分析质量，少于 5 张效率太低）。使用 `view_file` 工具批量查看 `.jpg` 文件。
+3. **按以下维度为每个场景打分（1-10 整数）**：
    - **aesthetic_beauty**（美感）：构图、光影、色彩
    - **credibility**（可信度）：真实感、物理逻辑
    - **impact**（冲击力）：视觉显著性、第一眼吸引力
    - **memorability**（记忆度）：独特符号、冯·雷斯托夫效应
    - **fun_interest**（趣味度）：参与感、娱乐价值
-3. **分类场景类型**：TYPE-A Hook / TYPE-B Narrative / TYPE-C Aesthetic / TYPE-D Commercial
-4. **计算加权分并筛选**：加权 ≥ 8.5 → MUST KEEP，≥ 7.0 → USABLE，< 7.0 → DISCARD
-5. **将评分结果更新到 `scene_scores.json` 中每个场景的字段**
-6. **将精选片段（MUST KEEP + USABLE）对应的 mp4 复制到 `scenes/best_shots/` 并按排名命名**
-7. **生成分析报告** `<video_id>_complete_analysis.md`
+4. **分类场景类型**：TYPE-A Hook / TYPE-B Narrative / TYPE-C Aesthetic / TYPE-D Commercial
+5. **计算加权分并筛选**：加权 ≥ 8.5 → MUST KEEP，≥ 7.0 → USABLE，< 7.0 → DISCARD
+6. **将评分结果更新到 `scene_scores.json` 中每个场景的字段**
+7. **将精选片段（MUST KEEP + USABLE）对应的 mp4 复制到 `scenes/best_shots/` 并按排名命名**
+8. **生成分析报告** `<video_id>_complete_analysis.md`
+
+##### ⚡ 大规模场景分批处理协议（>10 个场景时启用）
+
+当场景数量超过 10 个时，**必须**使用分批分析模式。这不是建议，而是硬性要求——因为一次性处理过多场景时，AI 容易因上下文疲劳而跳过、抽样或给出模板化评分，导致分析质量崩塌。
+
+**🚫 反抽样声明（Anti-Sampling Policy）**
+
+> 每一个场景都是用户花了真金白银下载和切分的素材。抽样分析意味着用户会错过可能的最佳镜头——想象一下，被跳过的那个场景恰好是整个视频的高光时刻。因此：
+> - **禁止**抽样、跳过、合并或"代表性选取"任何场景
+> - **禁止**对未查看的场景给出评分（不看图就打分等于捏造数据）
+> - **禁止**对多个场景使用相同的描述文字（每个镜头的画面内容不同，描述必然不同）
+> - 如果因为上下文限制确实无法继续，应当**明确告知用户**已完成到哪个场景，让用户决定如何继续，而不是悄悄跳过
+
+**分批规则：**
+- 每个 batch 包含 **5-10 个场景**（根据总数均匀划分）
+- 按场景编号顺序处理：Batch 1 = Scene 001-010，Batch 2 = Scene 011-020，以此类推
+
+**每个 batch 执行流程：**
+1. 使用 `view_file` 查看本批次所有帧图片
+2. 逐帧分析，**每个场景必须包含**：
+   - 📝 **唯一视觉描述**（1-2 句）：描述该帧画面中实际看到的具体内容（人物/物体/动作/环境/色调）。这是证明你真正查看了图片的证据——如果描述不出画面内容，说明没有认真看图
+   - 🎯 五维评分（1-10 整数）+ 场景类型 + 加权分 + 筛选等级
+3. 立即将本批次评分写入 `scene_scores.json`
+4. 输出子报告 `batch_N_report.md`（N = 批次号），包含：
+   - 本批次场景编号范围
+   - 每个场景的评分摘要表格（含视觉描述列）
+   - 本批次 MUST KEEP / USABLE / DISCARD 数量统计
+5. **向用户汇报进度**："✅ Batch N/M 完成（场景 XXX-YYY），MUST KEEP: X 个，USABLE: Y 个。继续处理下一批..."
+
+**全部 batch 完成后：**
+1. **🔍 覆盖率校验**（必须执行）：
+   - 列出 `frames/` 目录中的所有 `.jpg` 文件数量 = **应分析总数**
+   - 统计 `scene_scores.json` 中已有评分的场景数量 = **实际完成数**
+   - 输出校验结果："覆盖率：实际完成数/应分析总数 = XX%"
+   - **覆盖率必须 = 100%**。如果不足，列出遗漏的场景编号并补充分析
+2. 汇总所有子报告，生成完整分析报告 `<video_id>_complete_analysis.md`
+3. 复制精选片段到 `scenes/best_shots/`
+4. 确认最终报告输出完成后，删除所有 `batch_N_report.md` 子报告
+5. 向用户输出最终摘要：总场景数、各等级分布、Top 5 精选镜头
 
 #### 🅱️ API 模式（独立 CLI 运行用户）
 
@@ -283,7 +323,7 @@ python3 scripts/pipeline_enhanced.py https://www.bilibili.com/video/BV1xxxxx
 
 # 进入输出目录运行 AI 分析
 cd ~/Downloads/video-analysis/BV1xxxxx
-python3 ~/.openclaw/workspace/skills/video-expert-analyzer/scripts/ai_analyzer.py scene_scores.json
+python3 <skill_dir>/scripts/ai_analyzer.py scene_scores.json
 ```
 
 ### 快速分析（自定义场景检测阈值）
@@ -326,8 +366,10 @@ python3 scripts/ai_analyzer.py scene_scores.json 6.5  # 阈值 6.5
 ## 依赖要求
 
 ```bash
-# 系统依赖
-brew install ffmpeg
+# 系统依赖（安装 ffmpeg）
+brew install ffmpeg               # macOS
+winget install ffmpeg             # Windows
+sudo apt install ffmpeg           # Ubuntu/Debian
 
 # 一键安装所有 Python 依赖
 pip3 install -r requirements.txt
@@ -389,6 +431,15 @@ FunASR 首次运行需下载约 2-3GB 的 Paraformer 模型。如果下载缓慢
 ---
 
 ## 更新日志
+
+### v2.2.0 (2026-03-24)
+- ⚡ **大规模场景分批处理协议**：>10 个场景时强制分批（5-10个/batch），每批输出子报告 + 进度汇报，全部完成后汇总并清理
+- 🚫 **反抽样策略**：禁止跳过/合并场景，强制输出唯一视觉描述作为查看证据
+- 🔍 **100% 覆盖率校验**：完成后校验帧数 vs 已评分数，覆盖率必须 = 100%
+- 📝 **重写 description 触发词**：增加 8 个中文关键词 + 小红书平台
+- 🌐 补充 Windows/Linux 的 ffmpeg 安装说明
+- 🗑️ 删除过时的 QUICKSTART.md、清理运行日志
+- ⚠️ **模型兼容性发现**：Kimi 2.5 在 >30 镜头时出现偷懒行为（疑似服务端工具调用次数限制）；GPT 5.4 可完成 127 镜头连续分析（预热后 11 分 48 秒）；Gemini/Opus 尚未测试
 
 ### v2.1.0 (2026-02-27)
 - ✅ **智能字幕提取**：对齐 video-copy-analyzer，支持 B站API→内嵌→RapidOCR→FunASR 四级降级

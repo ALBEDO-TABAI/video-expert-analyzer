@@ -43,17 +43,39 @@ def main():
     # ── 1. 系统工具 ──
     print("1️⃣  系统工具")
     
-    for cmd, ver_arg, install_hint in [
-        ("ffmpeg", "-version", "brew install ffmpeg"),
-        ("yt-dlp", "--version", "pip3 install yt-dlp"),
-    ]:
-        ok, version = check_command(cmd, ver_arg)
-        if ok:
-            print(f"   ✅ {cmd}: {version[:60]}")
-        else:
-            print(f"   ❌ {cmd} 未安装 → {install_hint}")
-            missing_cmds.append(install_hint)
-            all_ok = False
+    # 检查 FFmpeg
+    ok, version = check_command("ffmpeg", "-version")
+    if ok:
+        print(f"   ✅ ffmpeg: {version[:60]}")
+    else:
+        print(f"   ❌ ffmpeg 未安装 → brew install ffmpeg / 下载 FFmpeg")
+        all_ok = False
+    
+    # 检查 yt-dlp (支持多种调用方式)
+    ok, version = False, ""
+    
+    # 方法1: 直接命令
+    try:
+        result = subprocess.run(["yt-dlp", "--version"], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            ok, version = True, result.stdout.strip()
+    except:
+        pass
+    
+    # 方法2: 通过 py -m 调用
+    if not ok:
+        try:
+            result = subprocess.run([sys.executable, "-m", "yt_dlp", "--version"], capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                ok, version = True, result.stdout.strip()
+        except:
+            pass
+    
+    if ok:
+        print(f"   ✅ yt-dlp: {version}")
+    else:
+        print(f"   ❌ yt-dlp 未安装 → pip3 install yt-dlp")
+        all_ok = False
     
     # ── 2. 核心 Python 依赖（必需） ──
     print("\n2️⃣  核心 Python 依赖（必需）")

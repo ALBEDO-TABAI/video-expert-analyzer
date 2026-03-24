@@ -49,3 +49,10 @@ output/
 *.m4a
 *.srt
 *.wav
+
+# Runtime logs
+*.log
+log.txt
+
+# Temporary batch reports
+batch_*_report.md
