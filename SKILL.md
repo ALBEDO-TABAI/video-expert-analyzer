@@ -13,7 +13,7 @@ description: Advanced video analysis and selection skill with AI-powered automat
 |------|---------|------|
 | **Bilibili** | ✅ 完全支持 | yt-dlp 下载 + B站API字幕 |
 | **YouTube** | ✅ 完全支持 | yt-dlp 下载 |
-| **抖音 (Douyin)** | ✅ 完全支持 | 专用下载器（无水印） |
+| **抖音 (Douyin)** | ✅ 完全支持 | 专用下载器（公开/分享链接无需浏览器 cookie） |
 | **小红书 (Xiaohongshu)** | ✅ 完全支持 | 专用下载器 |
 | **其他平台** | ⚠️ 可能支持 | 取决于 yt-dlp 支持情况 |
 
@@ -411,6 +411,14 @@ python3 scripts/check_environment.py
 3. 解析视频直链地址（自动替换 `playwm` 为 `play` 获取无水印版本）
 4. 使用正确的 Referer 头下载视频
 
+**给 Agent 的硬性规则：**
+- 处理抖音链接时，**不要**先尝试网页登录、浏览器 cookie、WSL 读取宿主浏览器 cookie 这条路线
+- 对公开可访问的抖音/分享链接，优先直接运行本地脚本：
+  - `python3 scripts/pipeline_enhanced.py "<抖音链接>"`
+  - 或 `python3 scripts/download_douyin.py "<抖音链接>" ./video.mp4`
+- 如果 Agent 提示“抖音网页版需要登录”或“WSL 无法读取 cookie”，说明它走错路了，应切回本地下载脚本
+- 优先使用用户从抖音 App 复制的分享短链（`https://v.douyin.com/...`）；长链也支持
+
 ## Troubleshooting
 
 ### 终端命令卡顿
@@ -427,6 +435,13 @@ FunASR 首次运行需下载约 2-3GB 的 Paraformer 模型。如果下载缓慢
 - 必须使用**具备视觉能力**的多模态模型（参见「模型兼容性」表）
 - 纯文本模型（如 GPT-3.5、Claude Haiku）**无法**执行 Agent 模式评分
 - 建议每批查看 3-5 张帧图片，避免单次加载过多
+
+### 抖音链接在 WSL / 远程环境报 cookie 错误
+如果 Agent 在 WSL、远程容器或无桌面浏览器环境里说“无法读取抖音链接，因为网页版需要登录且 cookie 读不到”，按下面处理：
+- 不要继续折腾网页登录
+- 直接运行 `scripts/pipeline_enhanced.py` 或 `scripts/download_douyin.py`
+- 如果用户给的是长链，优先让用户从抖音 App 重新复制一次分享链接，拿到 `v.douyin.com` 短链后再跑
+- 只有私密、删除、地区受限或已失效内容，才可能真的无法直接下载
 
 ---
 

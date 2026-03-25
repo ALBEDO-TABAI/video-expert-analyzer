@@ -11,7 +11,6 @@ import argparse
 import subprocess
 import tempfile
 import re
-import requests
 from urllib.parse import unquote
 from pathlib import Path
 from datetime import datetime
@@ -100,36 +99,22 @@ def get_douyin_video_info(url: str) -> Dict:
     获取抖音视频信息
     """
     try:
-        downloader = DouyinDownloader()
-        
         # 获取重定向后的URL
-        full_url, user_agent = downloader.get_redirect_url(url)
-        if not full_url:
+        full_url, user_agent, html = DouyinDownloader.get_redirect_url(url)
+        if not full_url or not html:
             return {"success": False, "title": "", "uploader": ""}
-        
-        # 获取页面HTML
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': user_agent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'zh-CN,zh;q=0.9',
-        })
-        
-        response = session.get(full_url, timeout=15)
-        html = response.text
-        
+
         # 提取RENDER_DATA
-        render_data = downloader.extract_render_data(html)
+        render_data = DouyinDownloader.extract_render_data(html)
         if not render_data:
             return {"success": False, "title": "", "uploader": ""}
-        
-        # 解析JSON获取视频信息
-        if '%' in render_data:
-            decoded = unquote(render_data)
+
+        # download_douyin.py 已经返回 Python dict；兼容旧版字符串输出。
+        if isinstance(render_data, dict):
+            data = render_data
         else:
-            decoded = render_data
-        
-        data = json.loads(decoded)
+            decoded = unquote(render_data) if '%' in render_data else render_data
+            data = json.loads(decoded)
         
         # 尝试提取标题和作者
         title = ""
@@ -448,8 +433,7 @@ class VideoAnalysisPipeline:
         # 检查是否为抖音链接，使用专用下载器
         if DouyinDownloader.is_douyin_url(self.url):
             print("   🔍 检测到抖音视频链接")
-            downloader = DouyinDownloader()
-            success = downloader.download(self.url, self.video_path)
+            success = DouyinDownloader.download_douyin_video(self.url, str(self.video_path))
             if not success:
                 raise RuntimeError("抖音视频下载失败")
         else:

@@ -34,7 +34,7 @@
 |----------|--------|-------|
 | **Bilibili** | ✅ Full Support | yt-dlp download + Bilibili API subtitles |
 | **YouTube** | ✅ Full Support | yt-dlp download |
-| **Douyin (抖音)** | ✅ Full Support | Dedicated downloader (watermark-free) |
+| **Douyin (抖音)** | ✅ Full Support | Dedicated downloader (public/share links do not need browser cookies) |
 | **Xiaohongshu (小红书)** | ✅ Full Support | Dedicated downloader |
 | **Others** | ⚠️ May Work | Depends on yt-dlp support |
 
@@ -209,7 +209,7 @@ Built with:
 |------|---------|------|
 | **Bilibili** | ✅ 完全支持 | yt-dlp 下载 + B站API字幕 |
 | **YouTube** | ✅ 完全支持 | yt-dlp 下载 |
-| **抖音 (Douyin)** | ✅ 完全支持 | 专用下载器（无水印） |
+| **抖音 (Douyin)** | ✅ 完全支持 | 专用下载器（公开/分享链接无需浏览器 cookie） |
 | **小红书 (Xiaohongshu)** | ✅ 完全支持 | 专用下载器 |
 | **其他平台** | ⚠️ 可能支持 | 取决于 yt-dlp |
 
@@ -254,6 +254,20 @@ python3 scripts/pipeline_enhanced.py "https://www.douyin.com/video/xxxxx"
 export VIDEO_ANALYZER_API_KEY="your-key"
 python3 scripts/ai_analyzer.py scene_scores.json --mode api
 ```
+
+### 抖音链接说明
+
+- 公开可访问的抖音链接，优先直接交给本地脚本处理，不要先尝试网页登录或浏览器 cookie
+- 推荐命令：
+
+```bash
+python3 scripts/pipeline_enhanced.py "<抖音链接>"
+# 或只下载视频
+python3 scripts/download_douyin.py "<抖音链接>" ./video.mp4
+```
+
+- 如果在 WSL、远程容器或无桌面浏览器环境里看到“cookie 无法读取”的报错，说明走错路线了，应切回上面的本地脚本
+- 优先使用从抖音 App 复制的 `https://v.douyin.com/...` 分享短链；长链同样支持
 
 ## 📊 评分体系
 
