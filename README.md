@@ -46,10 +46,12 @@
 | **Gemini 3.0 Pro** | ✅ Recommended | ✅ Supported | Best visual understanding |
 | **Kimi 2.5** | ✅ Supported | ✅ Supported | Excellent for Chinese |
 | **Claude (Sonnet/Opus)** | ✅ Supported | ❌ No | Has vision but no OpenAI-compatible API |
+| **TwelveLabs Pegasus** | — | ✅ Supported | **Analyzes the full scene *clip*, not a single frame** (`--mode pegasus`) |
 | **Text-only models** | ❌ No | ❌ No | Cannot score without vision |
 
 > **Agent Mode** = AI assistant in IDE views frame images directly  
-> **API Mode** = CLI calls vision model via OpenAI-compatible API
+> **API Mode** = CLI calls vision model via OpenAI-compatible API (one frame per scene)  
+> **Pegasus Mode** = CLI sends each scene's full video clip to [TwelveLabs Pegasus](https://twelvelabs.io). Because it watches the moving clip (camera motion, pacing, dynamic tension) instead of a static thumbnail, it gives a better read on Murch's *Rhythm* and *Impact* rules. Fully opt-in — without `TWELVELABS_API_KEY` set, behavior is unchanged.
 
 ## 🚀 Quick Start
 
@@ -78,9 +80,13 @@ python3 scripts/pipeline_enhanced.py "https://www.douyin.com/video/xxxxx"
 
 # AI scoring (choose one)
 # Option A: Agent mode (in IDE, AI assistant scores visually)
-# Option B: API mode
+# Option B: API mode (vision model, one frame per scene)
 export VIDEO_ANALYZER_API_KEY="your-key"
 python3 scripts/ai_analyzer.py scene_scores.json --mode api
+
+# Option C: Pegasus mode (TwelveLabs, analyzes the full scene clip)
+export TWELVELABS_API_KEY="your-twelvelabs-key"   # free key: https://twelvelabs.io
+python3 scripts/ai_analyzer.py scene_scores.json --mode pegasus
 ```
 
 ## 📊 Scoring System
@@ -144,6 +150,8 @@ output-directory/
 | `VIDEO_ANALYZER_API_KEY` | Vision model API key (required for API mode) |
 | `VIDEO_ANALYZER_BASE_URL` | API endpoint (default: Gemini) |
 | `VIDEO_ANALYZER_MODEL` | Model name (default: `gemini-2.0-flash`) |
+| `TWELVELABS_API_KEY` | TwelveLabs API key (required for Pegasus mode; free key at https://twelvelabs.io) |
+| `TWELVELABS_PEGASUS_MODEL` | Pegasus model name (default: `pegasus1.5`) |
 
 ## 📚 Theory Background
 
@@ -221,7 +229,10 @@ Built with:
 | **Gemini 3.0 Pro** | ✅ 推荐 | ✅ 支持 | 最强视觉理解 |
 | **Kimi 2.5** | ✅ 支持 | ✅ 支持 | 中文语境优秀 |
 | **Claude (Sonnet/Opus)** | ✅ 支持 | ❌ 不支持 | 有视觉能力但无 OpenAI 兼容 API |
+| **TwelveLabs Pegasus** | — | ✅ 支持 | **分析完整场景视频片段，而非单帧截图**（`--mode pegasus`） |
 | **纯文本模型** | ❌ 不可用 | ❌ 不可用 | 无视觉能力 |
+
+> **Pegasus 模式** = CLI 将每个场景的完整视频片段发送给 [TwelveLabs Pegasus](https://twelvelabs.io)。它看的是动态片段（运镜、节奏、动态张力）而非一张静帧缩略图，因此对 Murch 法则中的“节奏”与“冲击力”判断更准。完全可选——未设置 `TWELVELABS_API_KEY` 时行为不变。免费 API key 见 https://twelvelabs.io 。
 
 ## 🚀 快速开始
 
@@ -248,11 +259,15 @@ python3 scripts/pipeline_enhanced.py --setup
 python3 scripts/pipeline_enhanced.py https://www.bilibili.com/video/BV1xxxxx
 python3 scripts/pipeline_enhanced.py "https://www.douyin.com/video/xxxxx"
 
-# AI 评分（二选一）
+# AI 评分（三选一）
 # 方式 A：Agent 模式（IDE 中 AI 助手直接看图评分）
-# 方式 B：API 模式
+# 方式 B：API 模式（视觉大模型，每场景看一张截图）
 export VIDEO_ANALYZER_API_KEY="your-key"
 python3 scripts/ai_analyzer.py scene_scores.json --mode api
+
+# 方式 C：Pegasus 模式（TwelveLabs，分析完整场景视频片段）
+export TWELVELABS_API_KEY="your-twelvelabs-key"   # 免费 key: https://twelvelabs.io
+python3 scripts/ai_analyzer.py scene_scores.json --mode pegasus
 ```
 
 ### 抖音链接说明
