@@ -1,14 +1,24 @@
 #!/usr/bin/env python3
 """
 AI Scene Analyzer v2.0
-支持两种评分模式：
-  - API 模式：通过 OpenAI 兼容 API 调用 Gemini/Kimi 等视觉大模型
+支持三种评分模式：
+  - API 模式：通过 OpenAI 兼容 API 调用 Gemini/Kimi 等视觉大模型（看单帧截图）
   - Agent 模式：由宿主 AI 助手（IDE/OpenClaw 中的多模态模型）直接看图评分
+  - Pegasus 模式：通过 TwelveLabs Pegasus 分析完整场景视频片段（看动态视频，非单帧）
 
 环境变量（API 模式）：
   VIDEO_ANALYZER_API_KEY   - API 密钥
   VIDEO_ANALYZER_BASE_URL  - API 端点 (默认 https://generativelanguage.googleapis.com/v1beta/openai)
   VIDEO_ANALYZER_MODEL     - 模型名称 (默认 gemini-2.0-flash)
+
+环境变量（Pegasus 模式）：
+  TWELVELABS_API_KEY       - TwelveLabs API 密钥（必需）
+  TWELVELABS_PEGASUS_MODEL - Pegasus 模型名称 (默认 pegasus1.5)
+
+Pegasus 模式与 API/Agent 模式的区别：API/Agent 只能看场景的一张静帧截图，
+而 Pegasus 直接理解整段场景视频（含运镜、节奏、动态张力），更贴合 Walter Murch
+剪辑六法则中对"节奏"与"冲击力"的时序判断。完全可选：未配置 TWELVELABS_API_KEY
+时行为不变。免费 API key 见 https://twelvelabs.io 。
 """
 
 import json
@@ -173,6 +183,101 @@ def call_vision_api(
 
 
 # ============================================================
+# Pegasus 模式：调用 TwelveLabs Pegasus 分析完整场景视频片段
+# ============================================================
+# Pegasus 1.5 不接受裸 video_id，需要可访问的 URL 或已上传的 asset_id。
+# 场景片段是本地 mp4，因此先用 direct 上传为 asset（<=200MB），再用 asset_id 分析。
+PEGASUS_MAX_DIRECT_UPLOAD_MB = 200  # /v1.3/assets method=direct 上限；公网 URL 可至 4GB
+PEGASUS_MIN_TOKENS = 512  # Pegasus max_tokens 下限（API 要求）
+
+
+def call_pegasus_video(
+    clip_path: Path,
+    scene_num: int,
+    video_title: str = "",
+    total_scenes: int = 0,
+    transcript_text: str = "",
+    api_key: str = "",
+    model: str = "pegasus1.5",
+    client=None,
+) -> Optional[Dict]:
+    """通过 TwelveLabs Pegasus 分析整段场景视频片段并按五维度打分。
+
+    与 call_vision_api 不同，Pegasus 看的是动态视频（含运镜/节奏），而非单帧截图。
+    返回结构与 call_vision_api 一致（含 scores/type_classification 等），便于复用下游逻辑。
+    """
+    try:
+        from twelvelabs import TwelveLabs
+        from twelvelabs.types.video_context import VideoContext_AssetId
+    except ImportError:
+        print("   ⚠️  需要安装 twelvelabs 库: pip install 'twelvelabs>=1.2.8'")
+        return None
+
+    if not api_key:
+        print("   ⚠️  未设置 TWELVELABS_API_KEY 环境变量")
+        return None
+
+    if not clip_path.exists():
+        print(f"   ⚠️  Scene {scene_num:03d}: 未找到场景视频片段 {clip_path}")
+        return None
+
+    size_mb = clip_path.stat().st_size / (1024 * 1024)
+    if size_mb > PEGASUS_MAX_DIRECT_UPLOAD_MB:
+        print(
+            f"   ⚠️  Scene {scene_num:03d}: 片段 {size_mb:.0f}MB 超过 direct 上传上限 "
+            f"({PEGASUS_MAX_DIRECT_UPLOAD_MB}MB)，跳过（如需分析请改用公网 URL）"
+        )
+        return None
+
+    transcript_info = f"对应转录文本片段：{transcript_text}" if transcript_text else "（该场景无转录文本）"
+    user_prompt = SCORING_SYSTEM_PROMPT + "\n\n" + SCORING_USER_PROMPT_TEMPLATE.format(
+        scene_num=scene_num,
+        video_title=video_title,
+        total_scenes=total_scenes,
+        transcript_info=transcript_info,
+    )
+
+    if client is None:
+        client = TwelveLabs(api_key=api_key)
+
+    try:
+        # 1. 上传场景片段为 asset
+        with open(clip_path, "rb") as f:
+            asset = client.assets.create(method="direct", file=f, filename=clip_path.name)
+
+        # 2. 轮询 asset 直到 ready（上传后需短暂转码）
+        for _ in range(60):
+            current = client.assets.retrieve(asset_id=asset.id)
+            status = getattr(current, "status", None)
+            if status != "processing":
+                break
+            time.sleep(5)
+        if status == "failed":
+            print(f"   ⚠️  Scene {scene_num:03d}: asset 处理失败")
+            return None
+
+        # 3. Pegasus 分析整段视频
+        response = client.analyze(
+            model_name=model,
+            video=VideoContext_AssetId(asset_id=asset.id),
+            prompt=user_prompt,
+            max_tokens=PEGASUS_MIN_TOKENS,
+            temperature=0.3,
+        )
+        content = (response.data or "").strip()
+
+        json_match = re.search(r"\{[\s\S]*\}", content)
+        if json_match:
+            return json.loads(json_match.group())
+        print(f"   ⚠️  Scene {scene_num:03d}: 无法解析 Pegasus 返回的 JSON")
+        return None
+
+    except Exception as e:
+        print(f"   ⚠️  Scene {scene_num:03d}: Pegasus 调用失败 - {e}")
+        return None
+
+
+# ============================================================
 # 加权评分计算
 # ============================================================
 def compute_weighted_score(analysis: Dict) -> Dict:
@@ -224,10 +329,79 @@ def compute_weighted_score(analysis: Dict) -> Dict:
 
 
 # ============================================================
+# Pegasus 评分主循环
+# ============================================================
+def _score_with_pegasus(
+    data: Dict,
+    scores_path: Path,
+    scenes: List[Dict],
+    video_title: str,
+    total_scenes: int,
+    transcript_text: str,
+) -> Dict:
+    """用 TwelveLabs Pegasus 逐场景分析完整视频片段并写回 scores_path。"""
+    api_key = os.environ.get("TWELVELABS_API_KEY", "")
+    model = os.environ.get("TWELVELABS_PEGASUS_MODEL", "pegasus1.5")
+
+    if not api_key:
+        print("\n❌ Pegasus 模式需要设置环境变量 TWELVELABS_API_KEY")
+        print('   export TWELVELABS_API_KEY="your-api-key"')
+        print("   免费 API key: https://twelvelabs.io")
+        sys.exit(1)
+
+    try:
+        from twelvelabs import TwelveLabs
+    except ImportError:
+        print("\n❌ Pegasus 模式需要安装 twelvelabs: pip install 'twelvelabs>=1.2.8'")
+        sys.exit(1)
+
+    client = TwelveLabs(api_key=api_key)
+    print(f"\n🐎 Pegasus 模式：使用 {model} 分析 {total_scenes} 个场景视频片段...")
+
+    success_count = 0
+    for scene in scenes:
+        scene_num = scene.get("scene_number", 0)
+        clip_path = Path(scene.get("file_path", ""))
+        if not clip_path.exists():
+            print(f"  Scene {scene_num:03d}: ⚠️ 未找到场景片段，跳过")
+            continue
+
+        analysis = call_pegasus_video(
+            clip_path=clip_path,
+            scene_num=scene_num,
+            video_title=video_title,
+            total_scenes=total_scenes,
+            transcript_text=transcript_text[:500] if transcript_text else "",
+            api_key=api_key,
+            model=model,
+            client=client,
+        )
+
+        if analysis:
+            analysis = compute_weighted_score(analysis)
+            scene.update(analysis)
+            success_count += 1
+            print(f"  Scene {scene_num:03d}: {analysis['selection']} | 加权 {analysis['weighted_score']:.2f} | {analysis.get('type_classification', 'N/A')}")
+        else:
+            print(f"  Scene {scene_num:03d}: ❌ 分析失败")
+
+    with open(scores_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+    print(f"\n✅ Pegasus 评分完成：{success_count}/{total_scenes} 个场景成功")
+    print(f"   已保存到: {scores_path}")
+    return data
+
+
+# ============================================================
 # 主流程：自动评分
 # ============================================================
 def auto_score_scenes(scores_path: Path, video_analysis_dir: Path, mode: str = "api") -> Dict:
-    """自动为所有场景评分。mode='api' 使用远程API，mode='agent' 仅生成模板供宿主AI填写"""
+    """自动为所有场景评分。
+    mode='api'     远程视觉 API（看单帧）
+    mode='agent'   生成模板供宿主 AI 填写
+    mode='pegasus' TwelveLabs Pegasus（看完整场景视频片段）
+    """
 
     with open(scores_path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -251,6 +425,9 @@ def auto_score_scenes(scores_path: Path, video_analysis_dir: Path, mode: str = "
         print(f"   请使用宿主 AI 的视觉能力逐帧查看并填写评分")
         print(f"   评分结果写入: {scores_path}")
         return data
+
+    if mode == "pegasus":
+        return _score_with_pegasus(data, scores_path, scenes, video_title, total_scenes, transcript_text)
 
     # API 模式
     api_key = os.environ.get("VIDEO_ANALYZER_API_KEY", "")
@@ -491,16 +668,21 @@ def generate_complete_report(scores_path: Path) -> Path:
 # ============================================================
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("""用法: python3 ai_analyzer.py <scene_scores.json> [--mode api|agent]
+        print("""用法: python3 ai_analyzer.py <scene_scores.json> [--mode api|agent|pegasus]
 
 评分模式:
-  --mode api    通过远程 API 调用视觉大模型评分（需设置 VIDEO_ANALYZER_API_KEY）
-  --mode agent  生成评分模板，由宿主 AI 助手（如 IDE 中的 Gemini/Kimi）直接看图评分
+  --mode api      通过远程 API 调用视觉大模型评分（看单帧，需 VIDEO_ANALYZER_API_KEY）
+  --mode agent    生成评分模板，由宿主 AI 助手（如 IDE 中的 Gemini/Kimi）直接看图评分
+  --mode pegasus  通过 TwelveLabs Pegasus 分析完整场景视频片段（看动态视频，需 TWELVELABS_API_KEY）
 
 环境变量 (API 模式):
   VIDEO_ANALYZER_API_KEY    API 密钥（必需）
   VIDEO_ANALYZER_BASE_URL   API 端点（默认 Gemini）
   VIDEO_ANALYZER_MODEL      模型名称（默认 gemini-2.0-flash）
+
+环境变量 (Pegasus 模式):
+  TWELVELABS_API_KEY        TwelveLabs API 密钥（必需，免费 key: https://twelvelabs.io）
+  TWELVELABS_PEGASUS_MODEL  Pegasus 模型名称（默认 pegasus1.5）
 """)
         sys.exit(1)
 

@@ -6,4 +6,5 @@ modelscope
 torch
 torchaudio
 openai
+twelvelabs>=1.2.8  # 可选：Pegasus 视频理解评分模式（--mode pegasus）
 rapidocr-onnxruntime
